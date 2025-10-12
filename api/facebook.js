@@ -1,51 +1,38 @@
-import Jimp from "jimp";
-import { v4 as uuidv4} from "uuid";
-import path from "path";
-import fs from "fs/promises";
+// api/start.js
+import axios from "axios";
+import * as cheerio from "cheerio";
+import { v4 as uuidv4 } from "uuid";
 
 export default async function handler(req, res) {
-  const { url} = req.query;
-
-  if (req.method!== "GET") {
-    return res.status(405).json({ error: "Method not allowed. Use GET with?url="});
-}
-
-  if (!url ||!url.startsWith("http")) {
-    return res.status(400).json({ error: "يرجى تقديم بعد ?url= رابط صالح"});
-}
-
   try {
+    const response = await axios.post(
+      "https://ar.akinator.com/game",
+      new URLSearchParams({ cm: "false", sid: "1" }),
+      {
+        headers: {
+          "user-agent":
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+        }
+      }
+    );
 
-    const userImage = await Jimp.read(url);
+    const $ = cheerio.load(response.data);
 
+    const question = $("#question-label").text();
+    const session = $('form#askSoundlike input[name="session"]').val();
+    const signature = $('form#askSoundlike input[name="signature"]').val();
 
-    const background = await Jimp.read("https://files.catbox.moe/mh6jtt.jpg");
+    if (!session || !signature) {
+      return res.status(500).json({ error: "Session or signature missing" });
+    }
 
-
-    const circleSize = Math.floor(Math.min(background.bitmap.width, background.bitmap.height) * 0.9);
-    userImage.cover(circleSize, circleSize);
-    userImage.circle();
-
-
-    const posX = Math.floor((background.bitmap.width - circleSize) / 2);
-    const posY = Math.floor((background.bitmap.height - circleSize) / 2);
-
-
-    background.composite(userImage, posX, posY);
-
-
-    const fileName = `${uuidv4()}.png`;
-    const filePath = path.join("/tmp", fileName);
-    await background.writeAsync(filePath);
-
-
-    const imageBuffer = await fs.readFile(filePath);
-    await fs.unlink(filePath);
-
-    res.setHeader("Content-Type", "image/png");
-    res.send(imageBuffer);
-} catch (err) {
-    console.error("خطأ في معالجة الصورة", err);
-    return res.status(500).json({ error: "فشل في معالجة الصورة"});
-}
+    return res.status(200).json({
+      id: uuidv4(),
+      session,
+      signature,
+      question
+    });
+  } catch (err) {
+    return res.status(500).json({ error: err.message });
+  }
 }
