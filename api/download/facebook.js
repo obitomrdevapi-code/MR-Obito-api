@@ -1,6 +1,7 @@
-//api/download/facebook
-import axios from "axios";
-import cheerio from "cheerio";
+import Jimp from "jimp";
+import { v4 as uuidv4} from "uuid";
+import path from "path";
+import fs from "fs/promises";
 
 export default async function handler(req, res) {
   const { url} = req.query;
@@ -10,32 +11,41 @@ export default async function handler(req, res) {
 }
 
   if (!url ||!url.startsWith("http")) {
-    return res.status(400).json({ error: "يرجى تقديم رابط صالح بعد?url="});
+    return res.status(400).json({ error: "يرجى تقديم بعد ?url= رابط صالح"});
 }
 
   try {
-    const fetchUrl = `https://fsaver.net/download/?url=${encodeURIComponent(url)}`;
-    const headers = {
-      "Upgrade-Insecure-Requests": "1",
-      "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36",
-      "sec-ch-ua": '"Chromium";v="130", "Google Chrome";v="130", "Not?A_Brand";v="99"',
-      "sec-ch-ua-mobile": "?0",
-      "sec-ch-ua-platform": '"Windows"'
-};
 
-    const response = await axios.get(fetchUrl, { headers});
-    const html = response.data;
-    const $ = cheerio.load(html);
-    const videoSrc = $(".video__item").attr("src");
+    const userImage = await Jimp.read(url);
 
-    if (!videoSrc) {
-      return res.status(404).json({ error: "لم يتم العثور على رابط الفيديو."});
-}
 
-    const directUrl = `https://fsaver.net${videoSrc}`;
-    res.status(200).json({ url: directUrl});
+    const background = await Jimp.read("https://files.catbox.moe/mh6jtt.jpg");
+
+
+    const circleSize = Math.floor(Math.min(background.bitmap.width, background.bitmap.height) * 0.9);
+    userImage.cover(circleSize, circleSize);
+    userImage.circle();
+
+
+    const posX = Math.floor((background.bitmap.width - circleSize) / 2);
+    const posY = Math.floor((background.bitmap.height - circleSize) / 2);
+
+
+    background.composite(userImage, posX, posY);
+
+
+    const fileName = `${uuidv4()}.png`;
+    const filePath = path.join("/tmp", fileName);
+    await background.writeAsync(filePath);
+
+
+    const imageBuffer = await fs.readFile(filePath);
+    await fs.unlink(filePath);
+
+    res.setHeader("Content-Type", "image/png");
+    res.send(imageBuffer);
 } catch (err) {
-    console.error("❌ خطأ أثناء جلب الرابط:", err);
-    res.status(500).json({ error: "فشل في استخراج رابط التحميل."});
+    console.error("خطأ في معالجة الصورة", err);
+    return res.status(500).json({ error: "فشل في معالجة الصورة"});
 }
-}
+      }
