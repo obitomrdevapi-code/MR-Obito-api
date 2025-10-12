@@ -1,4 +1,3 @@
-
 // pages/api/maroc-frame.js
 import Jimp from "jimp";
 import { v4 as uuidv4} from "uuid";
