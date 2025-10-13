@@ -1,52 +1,45 @@
-
-import axios from 'axios';
-import Jimp from 'jimp';
-import { v4 as uuidv4} from 'uuid';
-import path from 'path';
-import fs from 'fs/promises';
+import axios from "axios";
+import Jimp from "jimp";
 
 export default async function handler(req, res) {
-  const { url} = req.query;
+  const { url } = req.query;
 
-  if (req.method!== "GET") {
-    return res.status(405).json({ error: "الطريقة غير مدعومة، استخدم GET مع?url="});
-}
+  if (req.method !== "GET") {
+    return res.status(405).json({ error: "Method not allowed. Use GET with ?url=" });
+  }
 
-  if (!url ||!url.startsWith("http")) {
-    return res.status(400).json({ error: "يرجى تقديم رابط صورة صالح بعد?url="});
-}
+  if (!url || !url.startsWith("http")) {
+    return res.status(400).json({ error: "يرجى تقديم رابط صالح بعد ?url=" });
+  }
 
   try {
-    
-    const baseRes = await axios.get(url, { responseType: 'arraybuffer'});
+    // تحميل الصورة الأصلية باستخدام axios
+    const baseRes = await axios.get(url, { responseType: 'arraybuffer' });
     const baseImage = await Jimp.read(Buffer.from(baseRes.data));
-    const { width: baseWidth, height: baseHeight} = baseImage.bitmap;
 
-    
-    const overlayRes = await axios.get("https://files.catbox.moe/rhdgdx.jpg", { responseType: 'arraybuffer'});
+    // تحميل الإطار
+    const overlayRes = await axios.get("https://files.catbox.moe/rhdgdx.jpg", { 
+      responseType: 'arraybuffer' 
+    });
     const overlayImage = await Jimp.read(Buffer.from(overlayRes.data));
-    const { width: overlayWidth, height: overlayHeight} = overlayImage.bitmap;
 
-    
-    const cropX = Math.floor((overlayWidth - baseWidth) / 2);
-    const cropY = Math.floor((overlayHeight - baseHeight) / 2);
-    const croppedOverlay = overlayImage.clone().crop(cropX, cropY, baseWidth, baseHeight).opacity(0.5);
+    // ضبط حجم الإطار وشفافيته
+    overlayImage.resize(baseImage.bitmap.width, baseImage.bitmap.height).opacity(0.5);
 
-    
-    baseImage.composite(croppedOverlay, 0, 0);
+    // دمج الإطار فوق الصورة
+    baseImage.composite(overlayImage, 0, 0);
 
-    
-    const fileName = `${uuidv4()}.png`;
-    const filePath = path.join("/tmp", fileName);
-    await baseImage.writeAsync(filePath);
-
-    const imageBuffer = await fs.readFile(filePath);
-    await fs.unlink(filePath);
+    // تحويل الصورة إلى buffer وإرسالها
+    const imageBuffer = await baseImage.getBufferAsync(Jimp.MIME_PNG);
 
     res.setHeader("Content-Type", "image/png");
+    res.setHeader("Content-Disposition", "attachment; filename=framed-image.png");
     res.send(imageBuffer);
-} catch (error) {
+
+  } catch (error) {
     console.error("❌ خطأ أثناء معالجة الصورة:", error);
-    res.status(500).json({ error: "حدث خطأ أثناء معالجة الصورة. تأكد من صحة الرابط أو نوع الصورة."});
-}
+    return res.status(500).json({ 
+      error: "حدث خطأ أثناء معالجة الصورة. قد تكون الصيغة غير مدعومة أو هناك مشكلة في التحميل." 
+    });
+  }
 }
