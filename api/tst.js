@@ -1,9 +1,11 @@
-
-// api/tst.js
 import axios from "axios";
 
 export default async function handler(req, res) {
   const { txt} = req.query;
+
+  if (req.method!== "GET") {
+    return res.status(405).json({ error: "الطريقة غير مدعومة، استخدم GET مع?txt="});
+}
 
   if (!txt || txt.trim() === "") {
     return res.status(400).json({ error: "يرجى إدخال السؤال في المعامل txt 📝"});
